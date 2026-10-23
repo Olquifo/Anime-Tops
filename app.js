@@ -9,6 +9,7 @@ const DEFAULTS = {
     colorPodium: '#65c111',
     colorRest: '#3a3a3a',
     colorHeader: '#5a1827',
+    colorAccent: '#e55353',
     showHonorable: true
 };
 
@@ -22,6 +23,7 @@ const honorableInput = document.getElementById('honorable-title-input');
 const podiumColorInput = document.getElementById('color-podium');
 const restColorInput = document.getElementById('color-rest');
 const headerColorInput = document.getElementById('color-header');
+const accentColorInput = document.getElementById('color-accent');
 const honorableToggle = document.getElementById('toggle-honorable');
 const resetBtn = document.getElementById('reset-btn');
 
@@ -67,6 +69,7 @@ const state = {
     colorPodium: DEFAULTS.colorPodium,
     colorRest: DEFAULTS.colorRest,
     colorHeader: DEFAULTS.colorHeader,
+    colorAccent: DEFAULTS.colorAccent,
     showHonorable: DEFAULTS.showHonorable,
     items: Array.from({ length: MAX_ITEMS }, (_, i) => createItem(i))
 };
@@ -92,6 +95,7 @@ function serializeState(includeDataUrls) {
         colorPodium: state.colorPodium,
         colorRest: state.colorRest,
         colorHeader: state.colorHeader,
+        colorAccent: state.colorAccent,
         showHonorable: state.showHonorable,
         items: state.items.map(item => ({
             text: item.text,
@@ -132,6 +136,7 @@ function loadState() {
     if (isColor(saved.colorPodium)) state.colorPodium = saved.colorPodium;
     if (isColor(saved.colorRest)) state.colorRest = saved.colorRest;
     if (isColor(saved.colorHeader)) state.colorHeader = saved.colorHeader;
+    if (isColor(saved.colorAccent)) state.colorAccent = saved.colorAccent;
     if (typeof saved.showHonorable === 'boolean') state.showHonorable = saved.showHonorable;
 
     if (Array.isArray(saved.items)) {
@@ -152,6 +157,7 @@ function syncControlsFromState() {
     if (podiumColorInput) podiumColorInput.value = state.colorPodium;
     if (restColorInput) restColorInput.value = state.colorRest;
     if (headerColorInput) headerColorInput.value = state.colorHeader;
+    if (accentColorInput) accentColorInput.value = state.colorAccent;
     if (honorableToggle) honorableToggle.checked = state.showHonorable;
 }
 
@@ -619,6 +625,15 @@ function drawFittedText(text, x, centerY, maxWidth, color, align, opts) {
     lines.forEach((line, k) => ctx.fillText(line, x, startY + k * lineHeight));
 }
 
+// Devuelve blanco o negro según cuál se lea mejor sobre el color de fondo dado (#rrggbb)
+function readableTextColor(hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b; // 0 (oscuro) a 255 (claro)
+    return luminance > 150 ? '#000000' : '#ffffff';
+}
+
 const HEADER_TEXT_OPTS = { maxSize: 26, singleMin: 18, minSize: 14, maxLines: 2 };
 const ITEM_TEXT_OPTS = { maxSize: 22, singleMin: 16, minSize: 12, maxLines: 2 };
 const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 12, maxLines: 2 };
@@ -655,6 +670,7 @@ function paintTopContents(target) {
     const contentBottom = h - CREDIT_HEIGHT;
     const availableHeight = contentBottom - headerHeight - footerHeight;
     const rowHeight = availableHeight / MAX_ITEMS;
+    const accentText = readableTextColor(state.colorAccent);
 
     const colImgW = w * 0.32;
     const colNumW = w * 0.16;
@@ -670,11 +686,11 @@ function paintTopContents(target) {
     ctx.textBaseline = 'middle';
     ctx.fillText('TOP 10', textColX / 2, headerHeight / 2);
 
-    ctx.fillStyle = '#e55353';
+    ctx.fillStyle = state.colorAccent;
     ctx.fillRect(textColX, 0, colTextW, headerHeight);
     if (state.headerTitle) {
         drawFittedText(state.headerTitle, textColX + colTextW / 2, headerHeight / 2,
-            colTextW - 40, '#ffffff', 'center', HEADER_TEXT_OPTS);
+            colTextW - 40, accentText, 'center', HEADER_TEXT_OPTS);
     }
 
     // 2. Filas (1 al 10)
@@ -779,11 +795,11 @@ function paintTopContents(target) {
         ctx.fillText('MENCIONES HONORÍFICAS', textColX / 2, footerY + (footerHeight / 2));
 
         // Bloque derecho: cuadro rojo editable con los nombres ingresados
-        ctx.fillStyle = '#e55353';
+        ctx.fillStyle = state.colorAccent;
         ctx.fillRect(textColX, footerY, colTextW, footerHeight);
         if (state.honorableTitle) {
             drawFittedText(state.honorableTitle, textColX + 20, footerY + footerHeight / 2,
-                colTextW - 40, '#ffffff', 'left', HONORABLE_TEXT_OPTS);
+                colTextW - 40, accentText, 'left', HONORABLE_TEXT_OPTS);
         }
     }
 
@@ -841,6 +857,13 @@ if (restColorInput) {
 if (headerColorInput) {
     headerColorInput.addEventListener('input', (e) => {
         state.colorHeader = e.target.value;
+        drawCanvas();
+    });
+}
+
+if (accentColorInput) {
+    accentColorInput.addEventListener('input', (e) => {
+        state.colorAccent = e.target.value;
         drawCanvas();
     });
 }

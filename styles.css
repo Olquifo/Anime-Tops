@@ -200,6 +200,11 @@ input[type="text"]:focus, select:focus {
     margin-bottom: 15px;
 }
 
+/* Cuatro selectores de color: 2 por fila */
+.colors-row {
+    grid-template-columns: 1fr 1fr;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -366,6 +371,11 @@ input:checked + .slider:before {
 
 .item-error {
     color: #f87171;
+    font-size: 11px;
+}
+
+.item-warning {
+    color: #fbbf24;
     font-size: 11px;
 }
 
