@@ -623,6 +623,10 @@ const HEADER_TEXT_OPTS = { maxSize: 26, singleMin: 18, minSize: 14, maxLines: 2 
 const ITEM_TEXT_OPTS = { maxSize: 22, singleMin: 16, minSize: 12, maxLines: 2 };
 const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 12, maxLines: 2 };
 
+// Franja discreta al pie de la imagen con la dirección de la página
+const SITE_CREDIT_TEXT = 'olquifo.github.io/Anime-Tops';
+const CREDIT_HEIGHT = 28;
+
 function drawCanvas() {
     if (!canvas) return;
     paintTop(canvas);
@@ -648,7 +652,8 @@ function paintTopContents(target) {
 
     const headerHeight = 90;
     const footerHeight = state.showHonorable ? 90 : 0;
-    const availableHeight = h - headerHeight - footerHeight;
+    const contentBottom = h - CREDIT_HEIGHT;
+    const availableHeight = contentBottom - headerHeight - footerHeight;
     const rowHeight = availableHeight / MAX_ITEMS;
 
     const colImgW = w * 0.32;
@@ -754,14 +759,14 @@ function paintTopContents(target) {
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(colImgW, headerHeight);
-    ctx.lineTo(colImgW, h - footerHeight);
+    ctx.lineTo(colImgW, contentBottom - footerHeight);
     ctx.moveTo(textColX, 0);
-    ctx.lineTo(textColX, h);
+    ctx.lineTo(textColX, contentBottom);
     ctx.stroke();
 
     // 4. Footer (Menciones Honoríficas)
     if (state.showHonorable) {
-        const footerY = h - footerHeight;
+        const footerY = contentBottom - footerHeight;
 
         // Bloque izquierdo: texto fijo "MENCIONES HONORÍFICAS"
         ctx.fillStyle = state.colorHeader;
@@ -781,6 +786,23 @@ function paintTopContents(target) {
                 colTextW - 40, '#ffffff', 'left', HONORABLE_TEXT_OPTS);
         }
     }
+
+    // 5. Franja inferior con la dirección de la página
+    ctx.fillStyle = state.colorHeader;
+    ctx.fillRect(0, contentBottom, w, CREDIT_HEIGHT);
+
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, contentBottom);
+    ctx.lineTo(w, contentBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.font = '600 13px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(SITE_CREDIT_TEXT, w / 2, contentBottom + CREDIT_HEIGHT / 2 + 1);
 }
 
 // ============================================================
