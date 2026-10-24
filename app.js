@@ -3,6 +3,7 @@
 // ============================================================
 
 const MAX_ITEMS = 10;
+const EXTRA_LABEL = '0'; // el extra siempre es el "Top 0" (no editable)
 const STORAGE_KEY = 'creador-de-tops:v1';
 
 const DEFAULTS = {
@@ -10,7 +11,10 @@ const DEFAULTS = {
     colorRest: '#3a3a3a',
     colorHeader: '#5a1827',
     colorAccent: '#e55353',
-    showHonorable: true
+    colorExtra: '#e55353',
+    showHonorable: true,
+    startNumber: 1,
+    showExtra: false
 };
 
 // ---------- Referencias al DOM ----------
@@ -24,7 +28,10 @@ const podiumColorInput = document.getElementById('color-podium');
 const restColorInput = document.getElementById('color-rest');
 const headerColorInput = document.getElementById('color-header');
 const accentColorInput = document.getElementById('color-accent');
+const extraColorInput = document.getElementById('color-extra');
 const honorableToggle = document.getElementById('toggle-honorable');
+const startNumberInput = document.getElementById('start-number-input');
+const extraToggle = document.getElementById('toggle-extra');
 const resetBtn = document.getElementById('reset-btn');
 
 const searchBtn = document.getElementById('search-btn');
@@ -70,12 +77,54 @@ const state = {
     colorRest: DEFAULTS.colorRest,
     colorHeader: DEFAULTS.colorHeader,
     colorAccent: DEFAULTS.colorAccent,
+    colorExtra: DEFAULTS.colorExtra,     // color solo del número del "Top 0"
     showHonorable: DEFAULTS.showHonorable,
+    startNumber: DEFAULTS.startNumber,   // número del primer lugar (1 = top 1-10, 11 = top 11-20...)
+    showExtra: DEFAULTS.showExtra,       // "Top 0": fila extra opcional arriba del primer lugar
+    extraItem: createItem(-1),
     items: Array.from({ length: MAX_ITEMS }, (_, i) => createItem(i))
 };
 
 function refreshIcons() {
     if (window.lucide) lucide.createIcons();
+}
+
+// ---------- Numeración y fila extra ----------
+function allItems() {
+    return [state.extraItem, ...state.items];
+}
+
+// Lugares que hoy se ven en el top (el extra solo si está activado)
+function visibleItems() {
+    return state.showExtra ? [state.extraItem, ...state.items] : [...state.items];
+}
+
+function sanitizeStartNumber(value) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n)) return 1;
+    return Math.min(9999, Math.max(1, n));
+}
+
+// Número que se muestra en el lugar "index" (0 a 9)
+function numberFor(index) {
+    return String(state.startNumber + index);
+}
+
+// El color de podio solo corresponde a los números reales 1, 2 y 3
+function isPodium(index) {
+    return state.startNumber + index <= 3;
+}
+
+function topLabel() {
+    return state.startNumber === 1
+        ? 'TOP 10'
+        : `TOP ${state.startNumber}-${state.startNumber + MAX_ITEMS - 1}`;
+}
+
+function topFileLabel() {
+    return state.startNumber === 1
+        ? '10'
+        : `${state.startNumber}-${state.startNumber + MAX_ITEMS - 1}`;
 }
 
 // ============================================================
@@ -96,14 +145,22 @@ function serializeState(includeDataUrls) {
         colorRest: state.colorRest,
         colorHeader: state.colorHeader,
         colorAccent: state.colorAccent,
+        colorExtra: state.colorExtra,
         showHonorable: state.showHonorable,
-        items: state.items.map(item => ({
-            text: item.text,
-            // Las imágenes subidas (base64) pesan mucho: si no entran, se omiten.
-            imageUrl: (includeDataUrls || !item.imageUrl.startsWith('data:')) ? item.imageUrl : '',
-            offsetY: item.offsetY,
-            scale: item.scale
-        }))
+        startNumber: state.startNumber,
+        showExtra: state.showExtra,
+        extraItem: serializeItem(state.extraItem, includeDataUrls),
+        items: state.items.map(item => serializeItem(item, includeDataUrls))
+    };
+}
+
+function serializeItem(item, includeDataUrls) {
+    return {
+        text: item.text,
+        // Las imágenes subidas (base64) pesan mucho: si no entran, se omiten.
+        imageUrl: (includeDataUrls || !item.imageUrl.startsWith('data:')) ? item.imageUrl : '',
+        offsetY: item.offsetY,
+        scale: item.scale
     };
 }
 
@@ -137,17 +194,23 @@ function loadState() {
     if (isColor(saved.colorRest)) state.colorRest = saved.colorRest;
     if (isColor(saved.colorHeader)) state.colorHeader = saved.colorHeader;
     if (isColor(saved.colorAccent)) state.colorAccent = saved.colorAccent;
+    if (isColor(saved.colorExtra)) state.colorExtra = saved.colorExtra;
     if (typeof saved.showHonorable === 'boolean') state.showHonorable = saved.showHonorable;
 
+    if (typeof saved.startNumber === 'number') state.startNumber = sanitizeStartNumber(saved.startNumber);
+    if (typeof saved.showExtra === 'boolean') state.showExtra = saved.showExtra;
+
+    const applySavedItem = (item, s) => {
+        if (!s || typeof s !== 'object') return;
+        if (typeof s.text === 'string') item.text = s.text;
+        if (typeof s.offsetY === 'number') item.offsetY = clamp(s.offsetY, -100, 100);
+        if (typeof s.scale === 'number') item.scale = clamp(s.scale, 1, 2.5);
+        if (typeof s.imageUrl === 'string') item.imageUrl = s.imageUrl;
+    };
+
+    applySavedItem(state.extraItem, saved.extraItem);
     if (Array.isArray(saved.items)) {
-        saved.items.slice(0, MAX_ITEMS).forEach((s, i) => {
-            if (!s || typeof s !== 'object') return;
-            const item = state.items[i];
-            if (typeof s.text === 'string') item.text = s.text;
-            if (typeof s.offsetY === 'number') item.offsetY = clamp(s.offsetY, -100, 100);
-            if (typeof s.scale === 'number') item.scale = clamp(s.scale, 1, 2.5);
-            if (typeof s.imageUrl === 'string') item.imageUrl = s.imageUrl;
-        });
+        saved.items.slice(0, MAX_ITEMS).forEach((s, i) => applySavedItem(state.items[i], s));
     }
 }
 
@@ -158,7 +221,10 @@ function syncControlsFromState() {
     if (restColorInput) restColorInput.value = state.colorRest;
     if (headerColorInput) headerColorInput.value = state.colorHeader;
     if (accentColorInput) accentColorInput.value = state.colorAccent;
+    if (extraColorInput) extraColorInput.value = state.colorExtra;
     if (honorableToggle) honorableToggle.checked = state.showHonorable;
+    if (startNumberInput) startNumberInput.value = state.startNumber;
+    if (extraToggle) extraToggle.checked = state.showExtra;
 }
 
 // ============================================================
@@ -174,17 +240,17 @@ function moveItem(from, to) {
     drawCanvas();
 }
 
-function createItemRow(item, index) {
+function createItemRow(item, index, isExtra = false) {
     const row = document.createElement('div');
     row.className = 'item-row';
-    row.dataset.index = index;
+    row.dataset.index = isExtra ? 'extra' : index;
 
     // Solo HTML estático: los valores que escribe el usuario se asignan por JS
     // (así las comillas u otros caracteres no rompen los atributos).
     row.innerHTML = `
-        <span class="drag-handle" title="Arrastrar para reordenar">
+        ${isExtra ? '<span class="drag-spacer"></span>' : `<span class="drag-handle" title="Arrastrar para reordenar">
             <i data-lucide="grip-vertical"></i>
-        </span>
+        </span>`}
         <div class="item-number"></div>
         <div class="item-inputs">
             <div class="item-fields">
@@ -203,10 +269,10 @@ function createItemRow(item, index) {
             ${item.tainted ? `
             <small class="item-warning">Esta imagen se ve, pero el sitio de origen no permite exportarla. Guárdala en tu equipo y súbela como archivo.</small>` : ''}
         </div>
-        <div class="move-btns">
+        ${isExtra ? '' : `<div class="move-btns">
             <button type="button" class="btn-small mini move-up-btn" title="Subir"><i data-lucide="chevron-up"></i></button>
             <button type="button" class="btn-small mini move-down-btn" title="Bajar"><i data-lucide="chevron-down"></i></button>
-        </div>
+        </div>`}
         <input type="file" class="item-file-input" accept="image/*" hidden>
         <button type="button" class="btn-small upload-btn" title="Subir imagen"><i data-lucide="upload"></i></button>
         <button type="button" class="btn-small clear-btn" title="Borrar elemento"><i data-lucide="trash-2"></i></button>
@@ -214,12 +280,20 @@ function createItemRow(item, index) {
 
     // Valores
     const number = row.querySelector('.item-number');
-    number.textContent = index + 1;
-    number.style.backgroundColor = index < 3 ? state.colorPodium : state.colorRest;
+    if (isExtra) {
+        number.textContent = EXTRA_LABEL;
+        number.style.backgroundColor = state.colorExtra;
+        number.style.color = readableTextColor(state.colorExtra);
+    } else {
+        const numberColor = isPodium(index) ? state.colorPodium : state.colorRest;
+        number.textContent = numberFor(index);
+        number.style.backgroundColor = numberColor;
+        number.style.color = readableTextColor(numberColor);
+    }
 
     const textInput = row.querySelector('.item-text-input');
     textInput.value = item.text;
-    textInput.placeholder = `Nombre / Título #${index + 1}`;
+    textInput.placeholder = `Nombre / Título #${isExtra ? EXTRA_LABEL : numberFor(index)}`;
 
     const urlInput = row.querySelector('.item-url-input');
     if (item.imageUrl.startsWith('data:')) {
@@ -278,6 +352,7 @@ function createItemRow(item, index) {
         drawCanvas();
     });
 
+    if (!isExtra) {
     // Flechas (funcionan también en pantallas táctiles)
     const upBtn = row.querySelector('.move-up-btn');
     const downBtn = row.querySelector('.move-down-btn');
@@ -322,6 +397,7 @@ function createItemRow(item, index) {
         dragSrcIndex = null;
         if (from !== null && from !== index) moveItem(from, index);
     });
+    }
 
     return row;
 }
@@ -329,6 +405,9 @@ function createItemRow(item, index) {
 function renderItemsList() {
     if (!itemsListEl) return;
     itemsListEl.innerHTML = '';
+    if (state.showExtra) {
+        itemsListEl.appendChild(createItemRow(state.extraItem, -1, true));
+    }
     state.items.forEach((item, index) => {
         itemsListEl.appendChild(createItemRow(item, index));
     });
@@ -466,9 +545,9 @@ function createSearchCard(name, imgUrl) {
 
     card.addEventListener('click', () => {
         // Slot libre = sin texto y sin imagen (no pisa lo que ya escribiste)
-        const item = state.items.find(it => !it.text && !it.imageUrl);
+        const item = visibleItems().find(it => !it.text && !it.imageUrl);
         if (!item) {
-            showSearchMessage('Los 10 lugares ya tienen contenido. Borra uno para agregar este resultado.');
+            showSearchMessage('Todos los lugares ya tienen contenido. Borra uno para agregar este resultado.');
             return;
         }
         hideSearchMessage();
@@ -637,6 +716,8 @@ function readableTextColor(hex) {
 const HEADER_TEXT_OPTS = { maxSize: 26, singleMin: 18, minSize: 14, maxLines: 2 };
 const ITEM_TEXT_OPTS = { maxSize: 22, singleMin: 16, minSize: 12, maxLines: 2 };
 const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 12, maxLines: 2 };
+const TOP_LABEL_OPTS = { maxSize: 42, singleMin: 20, minSize: 20, maxLines: 1, weight: '900' };
+const NUMBER_TEXT_OPTS = { maxSize: 46, singleMin: 22, minSize: 22, maxLines: 1, weight: '900' };
 
 // Franja discreta al pie de la imagen con la dirección de la página
 const SITE_CREDIT_TEXT = 'olquifo.github.io/Anime-Tops';
@@ -669,8 +750,28 @@ function paintTopContents(target) {
     const footerHeight = state.showHonorable ? 90 : 0;
     const contentBottom = h - CREDIT_HEIGHT;
     const availableHeight = contentBottom - headerHeight - footerHeight;
-    const rowHeight = availableHeight / MAX_ITEMS;
+    // Filas a dibujar: el extra ("Top 0", opcional) va arriba del primer lugar
+    const rows = [];
+    if (state.showExtra) {
+        rows.push({
+            item: state.extraItem,
+            label: EXTRA_LABEL,
+            color: state.colorExtra,
+            textColor: readableTextColor(state.colorExtra)
+        });
+    }
+    state.items.forEach((item, index) => {
+        const color = isPodium(index) ? state.colorPodium : state.colorRest;
+        rows.push({
+            item,
+            label: numberFor(index),
+            color,
+            textColor: readableTextColor(color)
+        });
+    });
+    const rowHeight = availableHeight / rows.length;
     const accentText = readableTextColor(state.colorAccent);
+    const headerText = readableTextColor(state.colorHeader);
 
     const colImgW = w * 0.32;
     const colNumW = w * 0.16;
@@ -680,11 +781,8 @@ function paintTopContents(target) {
     // 1. Header
     ctx.fillStyle = state.colorHeader;
     ctx.fillRect(0, 0, textColX, headerHeight);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 42px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('TOP 10', textColX / 2, headerHeight / 2);
+    drawFittedText(topLabel(), textColX / 2, headerHeight / 2,
+        textColX - 30, headerText, 'center', TOP_LABEL_OPTS);
 
     ctx.fillStyle = state.colorAccent;
     ctx.fillRect(textColX, 0, colTextW, headerHeight);
@@ -693,8 +791,9 @@ function paintTopContents(target) {
             colTextW - 40, accentText, 'center', HEADER_TEXT_OPTS);
     }
 
-    // 2. Filas (1 al 10)
-    state.items.forEach((item, i) => {
+    // 2. Filas
+    rows.forEach((row, i) => {
+        const item = row.item;
         const y = headerHeight + (i * rowHeight);
 
         // Imagen
@@ -731,7 +830,7 @@ function paintTopContents(target) {
             try {
                 ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
             } catch (err) {
-                console.error('No se pudo dibujar la imagen del lugar ' + (i + 1), err);
+                console.error('No se pudo dibujar la imagen del lugar ' + row.label, err);
             }
             ctx.restore();
         } else {
@@ -743,14 +842,13 @@ function paintTopContents(target) {
         }
 
         // Número
-        ctx.fillStyle = i < 3 ? state.colorPodium : state.colorRest;
+        ctx.fillStyle = row.color;
         ctx.fillRect(colImgW, y, colNumW, rowHeight);
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 46px Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(i + 1, colImgW + (colNumW / 2), y + (rowHeight / 2));
+        if (row.label) {
+            drawFittedText(row.label, colImgW + (colNumW / 2), y + (rowHeight / 2),
+                colNumW - 16, row.textColor, 'center', NUMBER_TEXT_OPTS);
+        }
 
         // Texto
         ctx.fillStyle = '#ffffff';
@@ -788,7 +886,7 @@ function paintTopContents(target) {
         ctx.fillStyle = state.colorHeader;
         ctx.fillRect(0, footerY, textColX, footerHeight);
 
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = headerText;
         ctx.font = '900 13px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -814,7 +912,7 @@ function paintTopContents(target) {
     ctx.lineTo(w, contentBottom);
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.fillStyle = headerText === '#ffffff' ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.7)';
     ctx.font = '600 13px Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -868,6 +966,34 @@ if (accentColorInput) {
     });
 }
 
+if (extraColorInput) {
+    extraColorInput.addEventListener('input', (e) => {
+        state.colorExtra = e.target.value;
+        renderItemsList();   // el número de la fila extra en la lista usa este color
+        drawCanvas();
+    });
+}
+
+if (startNumberInput) {
+    startNumberInput.addEventListener('input', (e) => {
+        if (e.target.value === '') return; // mientras escribe, no se cambia nada
+        state.startNumber = sanitizeStartNumber(e.target.value);
+        renderItemsList();
+        drawCanvas();
+    });
+    startNumberInput.addEventListener('change', () => {
+        startNumberInput.value = state.startNumber; // deja el campo con un valor válido
+    });
+}
+
+if (extraToggle) {
+    extraToggle.addEventListener('change', (e) => {
+        state.showExtra = e.target.checked;
+        renderItemsList();
+        drawCanvas();
+    });
+}
+
 if (honorableToggle) {
     honorableToggle.addEventListener('change', (e) => {
         state.showHonorable = e.target.checked;
@@ -883,6 +1009,7 @@ if (resetBtn) {
         state.honorableTitle = '';
         Object.assign(state, DEFAULTS);
         state.items.forEach(resetItem);
+        resetItem(state.extraItem);
 
         syncControlsFromState();
         renderItemsList();
@@ -909,7 +1036,7 @@ function buildFileName() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-    return slug ? `top-10-${slug}.png` : 'top-10.png';
+    return slug ? `top-${topFileLabel()}-${slug}.png` : `top-${topFileLabel()}.png`;
 }
 
 function exportErrorMessage() {
@@ -922,9 +1049,11 @@ function closeExportModal() {
 
 if (exportBtn && exportModal) {
     exportBtn.addEventListener('click', () => {
-        const blocked = state.items
-            .map((it, i) => (it.tainted ? i + 1 : null))
-            .filter(Boolean);
+        const blocked = [];
+        if (state.showExtra && state.extraItem.tainted) blocked.push(EXTRA_LABEL);
+        state.items.forEach((it, i) => {
+            if (it.tainted) blocked.push(numberFor(i));
+        });
 
         if (blocked.length) {
             alert(
@@ -943,7 +1072,7 @@ if (exportBtn && exportModal) {
 
             const imgPreview = document.createElement('img');
             imgPreview.src = dataUrl;
-            imgPreview.alt = 'Top 10 Exportado';
+            imgPreview.alt = 'Top exportado';
             modalImageContainer.appendChild(imgPreview);
 
             exportModal.style.display = 'flex';
@@ -994,6 +1123,6 @@ renderItemsList();
 drawCanvas();
 
 // Recargar las imágenes guardadas (el resto del estado ya está restaurado)
-state.items.forEach(item => {
+allItems().forEach(item => {
     if (item.imageUrl) setImageUrl(item, item.imageUrl);
 });

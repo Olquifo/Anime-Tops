@@ -167,7 +167,7 @@ body {
     gap: 10px;
 }
 
-input[type="text"], select {
+input[type="text"], input[type="number"], select {
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: white;
@@ -177,7 +177,7 @@ input[type="text"], select {
     font-size: 14px;
 }
 
-input[type="text"]:focus, select:focus {
+input[type="text"]:focus, input[type="number"]:focus, select:focus {
     border-color: var(--primary-red);
 }
 
@@ -234,6 +234,11 @@ input[type="color"] {
     align-items: center;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
+}
+
+/* NUEVO: separación entre interruptores consecutivos */
+.toggle-row + .toggle-row {
+    margin-top: 10px;
 }
 
 .switch {
@@ -307,6 +312,13 @@ input:checked + .slider:before {
     border-color: var(--primary-red);
 }
 
+/* NUEVO: hueco en la fila extra, que no se puede arrastrar */
+.drag-spacer {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
 .drag-handle {
     display: flex;
     flex-shrink: 0;
@@ -319,8 +331,9 @@ input:checked + .slider:before {
     background: #334155;
     color: white;
     font-weight: bold;
-    width: 28px;
+    min-width: 28px;
     height: 28px;
+    padding: 0 6px;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -67,6 +67,14 @@
                     </div>
                 </div>
 
+                <div class="grid-2col">
+                    <div class="form-group">
+                        <label for="start-number-input">NÚMERO INICIAL DEL TOP</label>
+                        <input type="number" id="start-number-input" min="1" max="9999" value="1">
+                        <small class="text-muted">Ej. 11 para hacer un top 11-20</small>
+                    </div>
+                </div>
+
                 <div class="grid-3col colors-row">
                     <div class="form-group">
                         <label for="color-podium">Color Podio (1-3)</label>
@@ -84,12 +92,24 @@
                         <label for="color-accent">Color Título/Menciones</label>
                         <input type="color" id="color-accent" value="#e55353">
                     </div>
+                    <div class="form-group">
+                        <label for="color-extra">Color Top 0</label>
+                        <input type="color" id="color-extra" value="#e55353">
+                    </div>
                 </div>
 
                 <div class="toggle-row">
                     <span>Mostrar Menciones Honoríficas</span>
                     <label class="switch">
                         <input type="checkbox" id="toggle-honorable" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-row">
+                    <span>Mostrar Top 0 (extra arriba del 1)</span>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-extra">
                         <span class="slider round"></span>
                     </label>
                 </div>
