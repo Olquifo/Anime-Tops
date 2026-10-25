@@ -200,6 +200,55 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus {
     margin-bottom: 15px;
 }
 
+/* NUEVO: presets de color por temporada */
+.preset-group {
+    margin-bottom: 15px;
+}
+
+.presets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.preset-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+    border-color: var(--primary-red);
+}
+
+.preset-btn.active {
+    border-color: var(--primary-red);
+    box-shadow: 0 0 0 1px var(--primary-red);
+}
+
+.preset-chips {
+    display: flex;
+    gap: 3px;
+}
+
+.preset-chips i {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
 /* Cuatro selectores de color: 2 por fila */
 .colors-row {
     grid-template-columns: 1fr 1fr;

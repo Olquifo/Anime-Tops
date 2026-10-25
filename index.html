@@ -33,14 +33,15 @@
             <div class="card">
                 <div class="card-header">
                     <i data-lucide="search" class="icon-red"></i>
-                    <h2>Buscar Anime / Personaje</h2>
+                    <h2>Buscar Anime / Manga / Personaje</h2>
                 </div>
                 <div class="search-controls">
                     <select id="search-type">
                         <option value="ANIME">Anime</option>
+                        <option value="MANGA">Manga</option>
                         <option value="CHARACTER">Personaje</option>
                     </select>
-                    <input type="text" id="search-input" placeholder="Ej. Megumin, Naruto...">
+                    <input type="text" id="search-input" placeholder="Ej. Megumin, Naruto, Berserk...">
                     <button id="search-btn" class="btn btn-icon" aria-label="Buscar">
                         <i data-lucide="search"></i>
                     </button>
@@ -73,6 +74,16 @@
                         <input type="number" id="start-number-input" min="1" max="9999" value="1">
                         <small class="text-muted">Ej. 11 para hacer un top 11-20</small>
                     </div>
+                    <div class="form-group">
+                        <label for="count-input">CANTIDAD DE LUGARES</label>
+                        <input type="number" id="count-input" min="1" max="10" value="10">
+                        <small class="text-muted">De 1 a 10 (ej. 9 para un top 9)</small>
+                    </div>
+                </div>
+
+                <div class="form-group preset-group">
+                    <label>PRESETS DE COLOR POR TEMPORADA</label>
+                    <div id="presets" class="presets-grid"></div>
                 </div>
 
                 <div class="grid-3col colors-row">

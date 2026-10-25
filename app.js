@@ -14,7 +14,34 @@ const DEFAULTS = {
     colorExtra: '#e55353',
     showHonorable: true,
     startNumber: 1,
+    visibleCount: MAX_ITEMS,
     showExtra: false
+};
+
+// Presets de color: podio (1-3), resto, header/footer, cuadro de título/menciones y Top 0.
+// El orden sigue las estaciones del hemisferio sur (primavera, verano, otoño, invierno).
+const COLOR_PRESETS = {
+    classic: {
+        label: 'Clásico',
+        podium: DEFAULTS.colorPodium, rest: DEFAULTS.colorRest, header: DEFAULTS.colorHeader,
+        titleBox: DEFAULTS.colorAccent, topZero: DEFAULTS.colorExtra
+    },
+    spring: {
+        label: 'Primavera',
+        podium: '#4ade80', rest: '#14532d', header: '#15803d', titleBox: '#16a34a', topZero: '#86efac'
+    },
+    summer: {
+        label: 'Verano',
+        podium: '#fff71a', rest: '#fffab8', header: '#fff01f', titleBox: '#f0c03d', topZero: '#f6ba13'
+    },
+    autumn: {
+        label: 'Otoño',
+        podium: '#ea580c', rest: '#451a03', header: '#7c2d12', titleBox: '#c2410c', topZero: '#fb923c'
+    },
+    winter: {
+        label: 'Invierno',
+        podium: '#38bdf8', rest: '#1e293b', header: '#0369a1', titleBox: '#0284c7', topZero: '#7dd3fc'
+    }
 };
 
 // ---------- Referencias al DOM ----------
@@ -31,7 +58,9 @@ const accentColorInput = document.getElementById('color-accent');
 const extraColorInput = document.getElementById('color-extra');
 const honorableToggle = document.getElementById('toggle-honorable');
 const startNumberInput = document.getElementById('start-number-input');
+const countInput = document.getElementById('count-input');
 const extraToggle = document.getElementById('toggle-extra');
+const presetsEl = document.getElementById('presets');
 const resetBtn = document.getElementById('reset-btn');
 
 const searchBtn = document.getElementById('search-btn');
@@ -79,6 +108,7 @@ const state = {
     colorAccent: DEFAULTS.colorAccent,
     colorExtra: DEFAULTS.colorExtra,     // color solo del número del "Top 0"
     showHonorable: DEFAULTS.showHonorable,
+    visibleCount: DEFAULTS.visibleCount, // cuántos lugares se muestran (1 a 10); el resto queda guardado pero oculto
     startNumber: DEFAULTS.startNumber,   // número del primer lugar (1 = top 1-10, 11 = top 11-20...)
     showExtra: DEFAULTS.showExtra,       // "Top 0": fila extra opcional arriba del primer lugar
     extraItem: createItem(-1),
@@ -94,15 +124,26 @@ function allItems() {
     return [state.extraItem, ...state.items];
 }
 
+// Los primeros N lugares (el resto queda oculto, pero sus datos se conservan)
+function activeItems() {
+    return state.items.slice(0, state.visibleCount);
+}
+
 // Lugares que hoy se ven en el top (el extra solo si está activado)
 function visibleItems() {
-    return state.showExtra ? [state.extraItem, ...state.items] : [...state.items];
+    return state.showExtra ? [state.extraItem, ...activeItems()] : activeItems();
 }
 
 function sanitizeStartNumber(value) {
     const n = Math.floor(Number(value));
     if (!Number.isFinite(n)) return 1;
     return Math.min(9999, Math.max(1, n));
+}
+
+function sanitizeCount(value) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n)) return MAX_ITEMS;
+    return Math.min(MAX_ITEMS, Math.max(1, n));
 }
 
 // Número que se muestra en el lugar "index" (0 a 9)
@@ -115,16 +156,20 @@ function isPodium(index) {
     return state.startNumber + index <= 3;
 }
 
+// "10", "9", "11-20", "11-15", "11"...
+function rangeLabel() {
+    const n = state.visibleCount;
+    const start = state.startNumber;
+    if (start === 1) return String(n);
+    return n === 1 ? String(start) : `${start}-${start + n - 1}`;
+}
+
 function topLabel() {
-    return state.startNumber === 1
-        ? 'TOP 10'
-        : `TOP ${state.startNumber}-${state.startNumber + MAX_ITEMS - 1}`;
+    return 'TOP ' + rangeLabel();
 }
 
 function topFileLabel() {
-    return state.startNumber === 1
-        ? '10'
-        : `${state.startNumber}-${state.startNumber + MAX_ITEMS - 1}`;
+    return rangeLabel();
 }
 
 // ============================================================
@@ -148,6 +193,7 @@ function serializeState(includeDataUrls) {
         colorExtra: state.colorExtra,
         showHonorable: state.showHonorable,
         startNumber: state.startNumber,
+        visibleCount: state.visibleCount,
         showExtra: state.showExtra,
         extraItem: serializeItem(state.extraItem, includeDataUrls),
         items: state.items.map(item => serializeItem(item, includeDataUrls))
@@ -198,6 +244,7 @@ function loadState() {
     if (typeof saved.showHonorable === 'boolean') state.showHonorable = saved.showHonorable;
 
     if (typeof saved.startNumber === 'number') state.startNumber = sanitizeStartNumber(saved.startNumber);
+    if (typeof saved.visibleCount === 'number') state.visibleCount = sanitizeCount(saved.visibleCount);
     if (typeof saved.showExtra === 'boolean') state.showExtra = saved.showExtra;
 
     const applySavedItem = (item, s) => {
@@ -224,7 +271,82 @@ function syncControlsFromState() {
     if (extraColorInput) extraColorInput.value = state.colorExtra;
     if (honorableToggle) honorableToggle.checked = state.showHonorable;
     if (startNumberInput) startNumberInput.value = state.startNumber;
+    if (countInput) countInput.value = state.visibleCount;
     if (extraToggle) extraToggle.checked = state.showExtra;
+}
+
+// ============================================================
+//  Presets de color
+// ============================================================
+const presetButtons = {};
+
+// Devuelve la clave del preset cuyos 5 colores coinciden con los actuales (o null)
+function currentPresetKey() {
+    const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+    return Object.keys(COLOR_PRESETS).find(key => {
+        const p = COLOR_PRESETS[key];
+        return same(p.podium, state.colorPodium) &&
+               same(p.rest, state.colorRest) &&
+               same(p.header, state.colorHeader) &&
+               same(p.titleBox, state.colorAccent) &&
+               same(p.topZero, state.colorExtra);
+    }) || null;
+}
+
+function updatePresetHighlight() {
+    const active = currentPresetKey();
+    Object.keys(presetButtons).forEach(key => {
+        const isActive = key === active;
+        presetButtons[key].classList.toggle('active', isActive);
+        presetButtons[key].setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+function applyPreset(key) {
+    const p = COLOR_PRESETS[key];
+    if (!p) return;
+    state.colorPodium = p.podium;
+    state.colorRest = p.rest;
+    state.colorHeader = p.header;
+    state.colorAccent = p.titleBox;
+    state.colorExtra = p.topZero;
+    syncControlsFromState();
+    renderItemsList();   // los números de la lista usan estos colores
+    drawCanvas();
+}
+
+function renderPresets() {
+    if (!presetsEl) return;
+    presetsEl.innerHTML = '';
+
+    Object.keys(COLOR_PRESETS).forEach(key => {
+        const p = COLOR_PRESETS[key];
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'preset-btn';
+        btn.title = p.label;
+
+        const name = document.createElement('span');
+        name.className = 'preset-name';
+        name.textContent = p.label;
+
+        // Muestra los 5 colores del preset
+        const chips = document.createElement('span');
+        chips.className = 'preset-chips';
+        [p.podium, p.rest, p.header, p.titleBox, p.topZero].forEach(color => {
+            const chip = document.createElement('i');
+            chip.style.backgroundColor = color;
+            chips.appendChild(chip);
+        });
+
+        btn.append(name, chips);
+        btn.addEventListener('click', () => applyPreset(key));
+        presetsEl.appendChild(btn);
+        presetButtons[key] = btn;
+    });
+
+    updatePresetHighlight();
 }
 
 // ============================================================
@@ -233,7 +355,7 @@ function syncControlsFromState() {
 let dragSrcIndex = null;
 
 function moveItem(from, to) {
-    if (from === to || to < 0 || to >= state.items.length) return;
+    if (from === to || to < 0 || to >= state.visibleCount) return;
     const [moved] = state.items.splice(from, 1);
     state.items.splice(to, 0, moved);
     renderItemsList();
@@ -357,7 +479,7 @@ function createItemRow(item, index, isExtra = false) {
     const upBtn = row.querySelector('.move-up-btn');
     const downBtn = row.querySelector('.move-down-btn');
     upBtn.disabled = index === 0;
-    downBtn.disabled = index === state.items.length - 1;
+    downBtn.disabled = index === state.visibleCount - 1;
     upBtn.addEventListener('click', () => moveItem(index, index - 1));
     downBtn.addEventListener('click', () => moveItem(index, index + 1));
 
@@ -408,7 +530,7 @@ function renderItemsList() {
     if (state.showExtra) {
         itemsListEl.appendChild(createItemRow(state.extraItem, -1, true));
     }
-    state.items.forEach((item, index) => {
+    activeItems().forEach((item, index) => {
         itemsListEl.appendChild(createItemRow(item, index));
     });
     refreshIcons();
@@ -572,16 +694,10 @@ async function doSearch() {
     if (searchResults) searchResults.innerHTML = '';
     if (!queryText) return;
 
-    const graphqlQuery = type === 'ANIME' ? `
-        query ($search: String) {
-            Page(perPage: 8) {
-                media(search: $search, type: ANIME) {
-                    title { romaji english }
-                    coverImage { large }
-                }
-            }
-        }
-    ` : `
+    // ANIME y MANGA usan la misma consulta ("media"), solo cambia el tipo; los personajes tienen la suya
+    const isCharacter = type === 'CHARACTER';
+
+    const graphqlQuery = isCharacter ? `
         query ($search: String) {
             Page(perPage: 8) {
                 characters(search: $search) {
@@ -590,7 +706,18 @@ async function doSearch() {
                 }
             }
         }
+    ` : `
+        query ($search: String, $type: MediaType) {
+            Page(perPage: 8) {
+                media(search: $search, type: $type) {
+                    title { romaji english }
+                    coverImage { large }
+                }
+            }
+        }
     `;
+
+    const variables = isCharacter ? { search: queryText } : { search: queryText, type };
 
     if (searchBtn) searchBtn.disabled = true;
 
@@ -598,13 +725,13 @@ async function doSearch() {
         const response = await fetch('https://graphql.anilist.co', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ query: graphqlQuery, variables: { search: queryText } })
+            body: JSON.stringify({ query: graphqlQuery, variables })
         });
 
         const data = await response.json();
         if (data.errors) throw new Error(data.errors[0].message);
 
-        const list = type === 'ANIME' ? (data.data?.Page?.media || []) : (data.data?.Page?.characters || []);
+        const list = isCharacter ? (data.data?.Page?.characters || []) : (data.data?.Page?.media || []);
 
         if (list.length === 0) {
             showSearchMessage('No se encontraron resultados.');
@@ -612,8 +739,8 @@ async function doSearch() {
         }
 
         list.forEach(entry => {
-            const name = type === 'ANIME' ? (entry.title?.romaji || entry.title?.english) : entry.name?.full;
-            const imgUrl = type === 'ANIME' ? entry.coverImage?.large : entry.image?.large;
+            const name = isCharacter ? entry.name?.full : (entry.title?.romaji || entry.title?.english);
+            const imgUrl = isCharacter ? entry.image?.large : entry.coverImage?.large;
             if (!name || !imgUrl) return;
             if (searchResults) searchResults.appendChild(createSearchCard(name, imgUrl));
         });
@@ -719,6 +846,15 @@ const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 12, maxLines:
 const TOP_LABEL_OPTS = { maxSize: 42, singleMin: 20, minSize: 20, maxLines: 1, weight: '900' };
 const NUMBER_TEXT_OPTS = { maxSize: 46, singleMin: 22, minSize: 22, maxLines: 1, weight: '900' };
 
+// Alto de cada fila con 10 lugares, footer y franja de crédito (la referencia de los tamaños de letra).
+// Con menos lugares las filas son más altas y las letras de los lugares y números crecen en proporción.
+const BASE_ROW_HEIGHT = 99.2;
+const MAX_FONT_SCALE = 1.6;
+
+function scaleOpts(opts, k) {
+    return { ...opts, maxSize: Math.round(opts.maxSize * k), singleMin: Math.round(opts.singleMin * k) };
+}
+
 // Franja discreta al pie de la imagen con la dirección de la página
 const SITE_CREDIT_TEXT = 'olquifo.github.io/Anime-Tops';
 const CREDIT_HEIGHT = 28;
@@ -726,6 +862,7 @@ const CREDIT_HEIGHT = 28;
 function drawCanvas() {
     if (!canvas) return;
     paintTop(canvas);
+    updatePresetHighlight();
     scheduleSave();
 }
 
@@ -760,7 +897,7 @@ function paintTopContents(target) {
             textColor: readableTextColor(state.colorExtra)
         });
     }
-    state.items.forEach((item, index) => {
+    activeItems().forEach((item, index) => {
         const color = isPodium(index) ? state.colorPodium : state.colorRest;
         rows.push({
             item,
@@ -770,6 +907,7 @@ function paintTopContents(target) {
         });
     });
     const rowHeight = availableHeight / rows.length;
+    const fontScale = Math.min(MAX_FONT_SCALE, Math.max(1, rowHeight / BASE_ROW_HEIGHT));
     const accentText = readableTextColor(state.colorAccent);
     const headerText = readableTextColor(state.colorHeader);
 
@@ -835,7 +973,7 @@ function paintTopContents(target) {
             ctx.restore();
         } else {
             ctx.fillStyle = '#94a3b8';
-            ctx.font = 'italic 18px Arial';
+            ctx.font = `italic ${Math.round(18 * fontScale)}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('Sin imagen', colImgW / 2, y + rowHeight / 2);
@@ -847,7 +985,7 @@ function paintTopContents(target) {
 
         if (row.label) {
             drawFittedText(row.label, colImgW + (colNumW / 2), y + (rowHeight / 2),
-                colNumW - 16, row.textColor, 'center', NUMBER_TEXT_OPTS);
+                colNumW - 16, row.textColor, 'center', scaleOpts(NUMBER_TEXT_OPTS, fontScale));
         }
 
         // Texto
@@ -856,7 +994,7 @@ function paintTopContents(target) {
 
         if (item.text) {
             drawFittedText(item.text, textColX + 20, y + rowHeight / 2,
-                colTextW - 40, '#000000', 'left', ITEM_TEXT_OPTS);
+                colTextW - 40, '#000000', 'left', scaleOpts(ITEM_TEXT_OPTS, fontScale));
         }
 
         // Borde
@@ -986,6 +1124,18 @@ if (startNumberInput) {
     });
 }
 
+if (countInput) {
+    countInput.addEventListener('input', (e) => {
+        if (e.target.value === '') return; // mientras escribe, no se cambia nada
+        state.visibleCount = sanitizeCount(e.target.value);
+        renderItemsList();
+        drawCanvas();
+    });
+    countInput.addEventListener('change', () => {
+        countInput.value = state.visibleCount; // deja el campo con un valor válido
+    });
+}
+
 if (extraToggle) {
     extraToggle.addEventListener('change', (e) => {
         state.showExtra = e.target.checked;
@@ -1051,7 +1201,7 @@ if (exportBtn && exportModal) {
     exportBtn.addEventListener('click', () => {
         const blocked = [];
         if (state.showExtra && state.extraItem.tainted) blocked.push(EXTRA_LABEL);
-        state.items.forEach((it, i) => {
+        activeItems().forEach((it, i) => {
             if (it.tainted) blocked.push(numberFor(i));
         });
 
@@ -1119,6 +1269,7 @@ window.addEventListener('keydown', (e) => {
 // ============================================================
 loadState();
 syncControlsFromState();
+renderPresets();
 renderItemsList();
 drawCanvas();
 
