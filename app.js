@@ -32,7 +32,7 @@ const COLOR_PRESETS = {
     },
     summer: {
         label: 'Verano',
-        podium: '#fff71a', rest: '#fffab8', header: '#958b08', titleBox: '#f0c03d', topZero: '#f6ba13'
+        podium: '#fff71a', rest: '#fffab8', header: '#744200', titleBox: '#fad05f', topZero: '#f6ba13'
     },
     autumn: {
         label: 'Otoño',
