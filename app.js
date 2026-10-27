@@ -32,7 +32,7 @@ const COLOR_PRESETS = {
     },
     summer: {
         label: 'Verano',
-        podium: '#fff71a', rest: '#fffab8', header: '#744200', titleBox: '#fad05f', topZero: '#f6ba13'
+        podium: '#fff71a', rest: '#fffab8', header: '#fff01f', titleBox: '#f0c03d', topZero: '#f6ba13'
     },
     autumn: {
         label: 'Otoño',
@@ -774,59 +774,73 @@ function ellipsize(text, maxWidth) {
     return t.trimEnd() + '…';
 }
 
-// Parte el texto en máximo 2 líneas (usa la fuente actual del ctx)
-function breakInTwoLines(text, maxWidth) {
+// Reparte el texto en líneas de hasta "maxWidth" (usa la fuente actual del ctx).
+// Si no entra en "maxLines" líneas, la última se corta con "…" y se avisa con overflow = true.
+function breakLines(text, maxWidth, maxLines) {
     const words = text.split(/\s+/).filter(Boolean);
-    let first = '';
-    let i = 0;
+    const lines = [];
+    let current = '';
+    let tooWide = false; // alguna palabra sola es más ancha que la línea
 
-    while (i < words.length) {
-        const test = first ? first + ' ' + words[i] : words[i];
-        if (ctx.measureText(test).width > maxWidth) break;
-        first = test;
-        i++;
+    words.forEach(word => {
+        const test = current ? current + ' ' + word : word;
+        if (ctx.measureText(test).width <= maxWidth) {
+            current = test;
+            return;
+        }
+        if (current) lines.push(current);
+        current = word;
+        if (ctx.measureText(word).width > maxWidth) tooWide = true;
+    });
+    if (current) lines.push(current);
+
+    if (lines.length > maxLines) {
+        const kept = lines.slice(0, maxLines - 1).map(l => ellipsize(l, maxWidth));
+        kept.push(ellipsize(lines.slice(maxLines - 1).join(' '), maxWidth));
+        return { lines: kept, overflow: true };
     }
-
-    if (!first) return { lines: [ellipsize(text, maxWidth)], overflow: true };
-
-    const rest = words.slice(i).join(' ');
-    if (!rest) return { lines: [first], overflow: false };
-    if (ctx.measureText(rest).width <= maxWidth) return { lines: [first, rest], overflow: false };
-    return { lines: [first, ellipsize(rest, maxWidth)], overflow: true };
+    if (tooWide) return { lines: lines.map(l => ellipsize(l, maxWidth)), overflow: true };
+    return { lines, overflow: false };
 }
 
-// Elige tamaño y líneas: primero 1 línea (de maxSize a singleMin),
-// luego 2 líneas (de maxSize-2 a minSize) y, como último recurso, recorta con "…".
+// Elige tamaño y líneas: primero 1 línea (de maxSize a singleMin); si no entra, varias líneas
+// (de maxSize-2 a minSize) buscando la letra más grande que quepa en el ancho, en maxLines
+// líneas y en maxHeight; como último recurso, recorta con "…".
 function layoutText(text, maxWidth, opts) {
-    const { maxSize, singleMin, minSize, maxLines = 2, weight = 'bold' } = opts;
+    const {
+        maxSize, singleMin, minSize,
+        maxLines = 2, weight = 'bold', maxHeight = Infinity, lineHeight = 1.25
+    } = opts;
     const setFont = (s) => { ctx.font = `${weight} ${s}px Arial, sans-serif`; };
 
     for (let s = maxSize; s >= singleMin; s--) {
         setFont(s);
-        if (ctx.measureText(text).width <= maxWidth) return { size: s, lines: [text] };
+        if (ctx.measureText(text).width <= maxWidth) return { size: s, lines: [text], lineHeight };
     }
 
     if (maxLines >= 2) {
         for (let s = maxSize - 2; s >= minSize; s--) {
             setFont(s);
-            const res = breakInTwoLines(text, maxWidth);
-            if (!res.overflow) return { size: s, lines: res.lines };
+            const res = breakLines(text, maxWidth, maxLines);
+            if (!res.overflow && res.lines.length * s * lineHeight <= maxHeight) {
+                return { size: s, lines: res.lines, lineHeight };
+            }
         }
     }
 
     setFont(minSize);
-    const lines = maxLines >= 2 ? breakInTwoLines(text, maxWidth).lines : [ellipsize(text, maxWidth)];
-    return { size: minSize, lines };
+    const lines = maxLines >= 2 ? breakLines(text, maxWidth, maxLines).lines : [ellipsize(text, maxWidth)];
+    return { size: minSize, lines, lineHeight };
 }
 
 function drawFittedText(text, x, centerY, maxWidth, color, align, opts) {
-    const { size, lines } = layoutText(text, maxWidth, opts);
+    const { size, lines, lineHeight: lineHeightFactor } = layoutText(text, maxWidth, opts);
     ctx.font = `${opts.weight || 'bold'} ${size}px Arial, sans-serif`;
     ctx.fillStyle = color;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
 
-    const lineHeight = size * 1.25;
+    const lineHeight = size * lineHeightFactor;
     const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
     lines.forEach((line, k) => ctx.fillText(line, x, startY + k * lineHeight));
 }
@@ -842,7 +856,8 @@ function readableTextColor(hex) {
 
 const HEADER_TEXT_OPTS = { maxSize: 26, singleMin: 18, minSize: 14, maxLines: 2 };
 const ITEM_TEXT_OPTS = { maxSize: 22, singleMin: 16, minSize: 12, maxLines: 2 };
-const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 12, maxLines: 2 };
+// Menciones: hasta 6 líneas dentro del footer (90 px de alto menos un margen), con la letra más grande que entre
+const HONORABLE_TEXT_OPTS = { maxSize: 20, singleMin: 14, minSize: 10, maxLines: 6, lineHeight: 1.2, maxHeight: 76 };
 const TOP_LABEL_OPTS = { maxSize: 42, singleMin: 20, minSize: 20, maxLines: 1, weight: '900' };
 const NUMBER_TEXT_OPTS = { maxSize: 46, singleMin: 22, minSize: 22, maxLines: 1, weight: '900' };
 
