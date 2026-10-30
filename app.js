@@ -82,6 +82,7 @@ function createItem(i) {
         text: '',
         imageUrl: '',
         imgElement: null,
+        offsetX: 0,
         offsetY: 0,
         scale: 1.0,
         loadError: false,
@@ -93,6 +94,7 @@ function resetItem(item) {
     item.text = '';
     item.imageUrl = '';
     item.imgElement = null;
+    item.offsetX = 0;
     item.offsetY = 0;
     item.scale = 1.0;
     item.loadError = false;
@@ -205,6 +207,7 @@ function serializeItem(item, includeDataUrls) {
         text: item.text,
         // Las imágenes subidas (base64) pesan mucho: si no entran, se omiten.
         imageUrl: (includeDataUrls || !item.imageUrl.startsWith('data:')) ? item.imageUrl : '',
+        offsetX: item.offsetX,
         offsetY: item.offsetY,
         scale: item.scale
     };
@@ -250,6 +253,7 @@ function loadState() {
     const applySavedItem = (item, s) => {
         if (!s || typeof s !== 'object') return;
         if (typeof s.text === 'string') item.text = s.text;
+        if (typeof s.offsetX === 'number') item.offsetX = clamp(s.offsetX, -100, 100);
         if (typeof s.offsetY === 'number') item.offsetY = clamp(s.offsetY, -100, 100);
         if (typeof s.scale === 'number') item.scale = clamp(s.scale, 1, 2.5);
         if (typeof s.imageUrl === 'string') item.imageUrl = s.imageUrl;
@@ -381,10 +385,9 @@ function createItemRow(item, index, isExtra = false) {
             </div>
             ${item.imgElement ? `
             <div class="item-adjust">
-                <span>Mover Y:</span>
-                <input type="range" min="-100" max="100" class="offset-y-slider">
-                <span>Zoom:</span>
-                <input type="range" min="100" max="250" class="scale-slider">
+                <label class="adjust-field"><span>Mover X:</span><input type="range" min="-100" max="100" class="offset-x-slider"></label>
+                <label class="adjust-field"><span>Mover Y:</span><input type="range" min="-100" max="100" class="offset-y-slider"></label>
+                <label class="adjust-field"><span>Zoom:</span><input type="range" min="100" max="250" class="scale-slider"></label>
             </div>` : ''}
             ${item.loadError ? `
             <small class="item-error">No se pudo cargar la imagen. Revisa la URL o súbela desde tu dispositivo.</small>` : ''}
@@ -435,6 +438,15 @@ function createItemRow(item, index, isExtra = false) {
     urlInput.addEventListener('change', (e) => {
         setImageUrl(item, e.target.value.trim());
     });
+
+    const offsetXSlider = row.querySelector('.offset-x-slider');
+    if (offsetXSlider) {
+        offsetXSlider.value = item.offsetX || 0;
+        offsetXSlider.addEventListener('input', (e) => {
+            item.offsetX = parseFloat(e.target.value);
+            drawCanvas();
+        });
+    }
 
     const offsetSlider = row.querySelector('.offset-y-slider');
     if (offsetSlider) {
@@ -674,6 +686,7 @@ function createSearchCard(name, imgUrl) {
         }
         hideSearchMessage();
         item.text = name;
+        item.offsetX = 0;
         item.offsetY = 0;
         item.scale = 1.0;
         renderItemsList();
@@ -694,13 +707,15 @@ async function doSearch() {
     if (searchResults) searchResults.innerHTML = '';
     if (!queryText) return;
 
-    // ANIME y MANGA usan la misma consulta ("media"), solo cambia el tipo; los personajes tienen la suya
-    const isCharacter = type === 'CHARACTER';
+    // ANIME y MANGA usan la misma consulta ("media"), solo cambia el tipo.
+    // Personajes y staff (seiyuus, mangakas, directores...) también comparten forma: nombre + imagen.
+    const isPerson = type === 'CHARACTER' || type === 'STAFF';
+    const personField = type === 'STAFF' ? 'staff' : 'characters';
 
-    const graphqlQuery = isCharacter ? `
+    const graphqlQuery = isPerson ? `
         query ($search: String) {
             Page(perPage: 8) {
-                characters(search: $search) {
+                ${personField}(search: $search) {
                     name { full }
                     image { large }
                 }
@@ -717,7 +732,7 @@ async function doSearch() {
         }
     `;
 
-    const variables = isCharacter ? { search: queryText } : { search: queryText, type };
+    const variables = isPerson ? { search: queryText } : { search: queryText, type };
 
     if (searchBtn) searchBtn.disabled = true;
 
@@ -731,7 +746,7 @@ async function doSearch() {
         const data = await response.json();
         if (data.errors) throw new Error(data.errors[0].message);
 
-        const list = isCharacter ? (data.data?.Page?.characters || []) : (data.data?.Page?.media || []);
+        const list = isPerson ? (data.data?.Page?.[personField] || []) : (data.data?.Page?.media || []);
 
         if (list.length === 0) {
             showSearchMessage('No se encontraron resultados.');
@@ -739,8 +754,8 @@ async function doSearch() {
         }
 
         list.forEach(entry => {
-            const name = isCharacter ? entry.name?.full : (entry.title?.romaji || entry.title?.english);
-            const imgUrl = isCharacter ? entry.image?.large : entry.coverImage?.large;
+            const name = isPerson ? entry.name?.full : (entry.title?.romaji || entry.title?.english);
+            const imgUrl = isPerson ? entry.image?.large : entry.coverImage?.large;
             if (!name || !imgUrl) return;
             if (searchResults) searchResults.appendChild(createSearchCard(name, imgUrl));
         });
@@ -973,15 +988,17 @@ function paintTopContents(target) {
                 drawH = (colImgW / imgRatio) * scale;
             }
 
-            const offsetX = (colImgW - drawW) / 2;
+            const baseOffsetX = (colImgW - drawW) / 2;
             const baseOffsetY = y + (rowHeight - drawH) / 2;
-            // El slider (-100..100) recorre justo el margen sobrante de la imagen,
+            // Los sliders (-100..100) recorren justo el margen sobrante de la imagen en cada eje,
             // así nunca se ven huecos blancos ni se sale del recuadro.
-            const maxShift = Math.max(0, (drawH - rowHeight) / 2);
-            const offsetY = baseOffsetY + (item.offsetY / 100) * maxShift;
+            const maxShiftX = Math.max(0, (drawW - colImgW) / 2);
+            const maxShiftY = Math.max(0, (drawH - rowHeight) / 2);
+            const drawX = baseOffsetX + ((item.offsetX || 0) / 100) * maxShiftX;
+            const drawY = baseOffsetY + (item.offsetY / 100) * maxShiftY;
 
             try {
-                ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+                ctx.drawImage(img, drawX, drawY, drawW, drawH);
             } catch (err) {
                 console.error('No se pudo dibujar la imagen del lugar ' + row.label, err);
             }
@@ -1021,17 +1038,7 @@ function paintTopContents(target) {
         ctx.stroke();
     });
 
-    // 3. Divisiones Verticales
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(colImgW, headerHeight);
-    ctx.lineTo(colImgW, contentBottom - footerHeight);
-    ctx.moveTo(textColX, 0);
-    ctx.lineTo(textColX, contentBottom);
-    ctx.stroke();
-
-    // 4. Footer (Menciones Honoríficas)
+    // 3. Footer (Menciones Honoríficas)
     if (state.showHonorable) {
         const footerY = contentBottom - footerHeight;
 
@@ -1053,6 +1060,22 @@ function paintTopContents(target) {
                 colTextW - 40, accentText, 'left', HONORABLE_TEXT_OPTS);
         }
     }
+
+    // 4. Líneas negras de separación (van después del footer para que también lo atraviesen)
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, headerHeight);                       // header / primera fila
+    ctx.lineTo(w, headerHeight);
+    ctx.moveTo(colImgW, headerHeight);                 // imagen / número
+    ctx.lineTo(colImgW, contentBottom - footerHeight);
+    ctx.moveTo(textColX, 0);                           // número / texto (y footer: título / menciones)
+    ctx.lineTo(textColX, contentBottom);
+    if (state.showHonorable) {                         // última fila / footer (del mismo grosor que las demás)
+        ctx.moveTo(0, contentBottom - footerHeight);
+        ctx.lineTo(w, contentBottom - footerHeight);
+    }
+    ctx.stroke();
 
     // 5. Franja inferior con la dirección de la página
     ctx.fillStyle = state.colorHeader;

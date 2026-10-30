@@ -410,24 +410,34 @@ input:checked + .slider:before {
     min-width: 0;
 }
 
+/* CAMBIO: tres deslizadores (X, Y y zoom) que se acomodan en una o varias filas */
 .item-adjust {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 4px 14px;
     font-size: 11px;
     color: var(--text-muted);
     background: var(--card-bg);
-    padding: 2px 6px;
+    padding: 3px 6px;
     border-radius: 4px;
 }
 
-.item-adjust .offset-y-slider {
-    flex: 1;
-    height: 4px;
+.adjust-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 120px;
+    min-width: 0;
 }
 
-.item-adjust .scale-slider {
-    flex: 0 0 70px;
+.adjust-field span {
+    white-space: nowrap;
+}
+
+.adjust-field input[type="range"] {
+    flex: 1;
+    min-width: 0;
     height: 4px;
 }
 
@@ -518,6 +528,11 @@ input:checked + .slider:before {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.search-hint {
+    display: block;
+    margin-top: 8px;
 }
 
 .error-msg {
