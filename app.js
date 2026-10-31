@@ -663,7 +663,11 @@ function hideSearchMessage() {
     if (searchError) searchError.style.display = 'none';
 }
 
-function createSearchCard(name, imgUrl) {
+// extra.text: texto completo que se escribe en el lugar (por defecto, el nombre)
+// extra.subtitle: segunda línea chica bajo el nombre (por ejemplo, el anime y OP1/ED2)
+function createSearchCard(name, imgUrl, extra = {}) {
+    const fullText = extra.text || name;
+
     const card = document.createElement('div');
     card.className = 'search-card';
 
@@ -673,9 +677,17 @@ function createSearchCard(name, imgUrl) {
 
     const label = document.createElement('p');
     label.textContent = name;
-    label.title = name;
+    label.title = fullText;
 
     card.append(img, label);
+
+    if (extra.subtitle) {
+        const sub = document.createElement('p');
+        sub.className = 'search-sub';
+        sub.textContent = extra.subtitle;
+        sub.title = fullText;
+        card.appendChild(sub);
+    }
 
     card.addEventListener('click', () => {
         // Slot libre = sin texto y sin imagen (no pisa lo que ya escribiste)
@@ -685,7 +697,7 @@ function createSearchCard(name, imgUrl) {
             return;
         }
         hideSearchMessage();
-        item.text = name;
+        item.text = fullText;
         item.offsetX = 0;
         item.offsetY = 0;
         item.scale = 1.0;
@@ -697,6 +709,138 @@ function createSearchCard(name, imgUrl) {
     return card;
 }
 
+// ============================================================
+//  Openings y endings (AnimeThemes)
+// ============================================================
+const ANIMETHEMES_URL = 'https://graphql.animethemes.moe/';
+
+// "withArtists = false" es una versión más simple que se usa si la completa es rechazada
+function buildThemesQuery(withArtists) {
+    const song = withArtists
+        ? 'song { title { romaji } performances(first: 2) { artist { name { main } } } }'
+        : 'song { title { romaji } }';
+    const images = 'images(first: 6) { nodes { facet link } }';
+    return `
+        query ($search: String!) {
+            search(search: $search, first: 6) {
+                animethemes {
+                    id type slug
+                    anime { title { romaji english } ${images} }
+                    ${song}
+                }
+                anime {
+                    title { romaji english }
+                    ${images}
+                    animethemes(first: 12) { id type slug ${song} }
+                }
+            }
+        }
+    `;
+}
+
+async function fetchThemesSearch(queryText) {
+    let lastError = null;
+
+    for (const withArtists of [true, false]) {
+        try {
+            const response = await fetch(ANIMETHEMES_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ query: buildThemesQuery(withArtists), variables: { search: queryText } })
+            });
+            const json = await response.json();
+
+            if (json.data && json.data.search) {
+                if (json.errors) console.warn('AnimeThemes devolvió avisos:', json.errors);
+                return json.data.search;
+            }
+            lastError = new Error((json.errors && json.errors[0] && json.errors[0].message) || 'Respuesta vacía de AnimeThemes');
+            console.warn('AnimeThemes rechazó la consulta' + (withArtists ? ', pruebo una versión más simple:' : ':'), json.errors);
+        } catch (err) {
+            lastError = err;
+            console.warn('No se pudo consultar AnimeThemes:', err);
+        }
+    }
+    throw lastError;
+}
+
+// Algunos campos pueden venir como texto simple o como objeto { romaji, english, main... }
+function textOf(value, key) {
+    if (typeof value === 'string') return value;
+    return (value && value[key]) || '';
+}
+
+// Prefiere la portada grande; si no hay, cualquier portada; si no, la primera imagen
+function pickCover(images) {
+    const nodes = (images && images.nodes) || [];
+    const hasFacet = (n, re) => re.test(String(n.facet || ''));
+    const best = nodes.find(n => hasFacet(n, /large/i)) || nodes.find(n => hasFacet(n, /cover/i)) || nodes[0];
+    return best ? best.link : null;
+}
+
+function collectThemeResults(search) {
+    const results = [];
+    const seen = new Set();
+
+    const add = (theme, anime) => {
+        if (!theme || !anime) return;
+        const key = theme.id != null ? String(theme.id) : `${textOf(anime.title, 'romaji')}|${theme.slug}`;
+        if (seen.has(key)) return;
+
+        const imgUrl = pickCover(anime.images);
+        if (!imgUrl) return; // sin portada no hay qué mostrar en la tarjeta
+
+        const animeTitle = textOf(anime.title, 'romaji') || textOf(anime.title, 'english');
+        const songTitle = textOf(theme.song && theme.song.title, 'romaji');
+        const slug = theme.slug || theme.type || '';
+        const performances = (theme.song && Array.isArray(theme.song.performances)) ? theme.song.performances : [];
+        const artists = [...new Set(performances.map(p => textOf(p && p.artist && p.artist.name, 'main')).filter(Boolean))];
+
+        // Texto del lugar: "Canción - Artista (Anime OP1)"
+        let text;
+        if (songTitle) {
+            text = songTitle + (artists.length ? ` - ${artists.join(', ')}` : '') + ` (${animeTitle} ${slug})`;
+        } else {
+            text = `${animeTitle} ${slug}`;
+        }
+
+        seen.add(key);
+        results.push({
+            name: songTitle || `${animeTitle} ${slug}`,
+            subtitle: `${animeTitle} · ${slug}`,
+            text: text.trim(),
+            imgUrl
+        });
+    };
+
+    (search.animethemes || []).forEach(theme => add(theme, theme.anime));
+    (search.anime || []).slice(0, 2).forEach(anime => (anime.animethemes || []).forEach(theme => add(theme, anime)));
+
+    return results.slice(0, 18);
+}
+
+async function searchThemes(queryText) {
+    if (searchBtn) searchBtn.disabled = true;
+    try {
+        const results = collectThemeResults(await fetchThemesSearch(queryText));
+
+        if (results.length === 0) {
+            showSearchMessage('No se encontraron resultados.');
+            return;
+        }
+        results.forEach(r => {
+            if (searchResults) {
+                searchResults.appendChild(createSearchCard(r.name, r.imgUrl, { text: r.text, subtitle: r.subtitle }));
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        showSearchMessage('Error al conectar con AnimeThemes.');
+    } finally {
+        if (searchBtn) searchBtn.disabled = false;
+    }
+}
+
 async function doSearch() {
     if (!searchInput || !searchType) return;
 
@@ -706,6 +850,11 @@ async function doSearch() {
     hideSearchMessage();
     if (searchResults) searchResults.innerHTML = '';
     if (!queryText) return;
+
+    if (type === 'THEMES') {
+        await searchThemes(queryText);
+        return;
+    }
 
     // ANIME y MANGA usan la misma consulta ("media"), solo cambia el tipo.
     // Personajes y staff (seiyuus, mangakas, directores...) también comparten forma: nombre + imagen.

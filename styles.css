@@ -530,6 +530,12 @@ input:checked + .slider:before {
     text-overflow: ellipsis;
 }
 
+.search-card p.search-sub {
+    padding: 0 5px 6px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
 .search-hint {
     display: block;
     margin-top: 8px;
